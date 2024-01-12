@@ -1,24 +1,25 @@
 package dev.knative.eventing.kafka.broker.core.oidc;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.net.PemTrustOptions;
-import io.vertx.ext.web.client.HttpResponse;
 import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.client.WebClientOptions;
 import org.jose4j.jwk.JsonWebKeySet;
+import org.jose4j.jwt.JwtClaims;
 import org.jose4j.jwt.consumer.InvalidJwtException;
 import org.jose4j.jwt.consumer.JwtConsumer;
 import org.jose4j.jwt.consumer.JwtConsumerBuilder;
 import org.jose4j.jwt.consumer.JwtContext;
 import org.jose4j.keys.resolvers.JwksVerificationKeyResolver;
+
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class TokenVerifier {
 
@@ -28,23 +29,23 @@ public class TokenVerifier {
 
   private JwksVerificationKeyResolver jwksVerificationKeyResolver;
 
-  public TokenVerifier(Vertx vertx) {
+  public TokenVerifier(Vertx vertx) throws ExecutionException, InterruptedException, TimeoutException {
     this.vertx = vertx;
+
+    oidcDiscovery().wait();
+
+    oidcDiscovery()
+      .toCompletionStage()
+      .toCompletableFuture()
+      .get(10, TimeUnit.SECONDS);
   }
 
-  public Future<Boolean> verify(String token, String expectedAudience) {
-    if (this.jwksVerificationKeyResolver == null) {
-      return oidcDiscovery().compose(unused -> this.directVerify(token, expectedAudience));
-    }
+  public Future<JwtClaims> verify(String token, String expectedAudience) {
+    return this.vertx.<JwtClaims>executeBlocking(promise -> {
+      // execute blocking, as jose .process() is blocking
 
-    return this.directVerify(token, expectedAudience);
-  }
-
-  private Future<Boolean> directVerify(String token, String expectedAudience) {
-    Promise<Boolean> r = Promise.promise();
-    return r.future().compose(booleanPromise -> {
       JwtConsumer jwtConsumer = new JwtConsumerBuilder()
-        .setVerificationKeyResolver(jwksVerificationKeyResolver)
+        .setVerificationKeyResolver(this.jwksVerificationKeyResolver)
         .setExpectedAudience(expectedAudience)
         .setExpectedIssuer(this.oidcInfo.getIssuer())
         .build();
@@ -52,36 +53,33 @@ public class TokenVerifier {
       try {
         JwtContext jwtContext = jwtConsumer.process(token);
 
-        return Future.succeededFuture(true);
+        promise.complete(jwtContext.getJwtClaims());
       } catch (InvalidJwtException e) {
-        return Future.succeededFuture(false);
+        promise.fail(e);
       }
     });
   }
 
   private Future<Void> oidcDiscovery() {
-    Config c = new ConfigBuilder().build();
-    KubernetesClient kClient = new KubernetesClientBuilder().withConfig(c).build();
+    Config kubeConfig = new ConfigBuilder().build();
 
     WebClientOptions webClientOptions = new WebClientOptions()
-      .setPemTrustOptions(new PemTrustOptions().addCertPath(c.getCaCertFile()));
+      .setPemTrustOptions(new PemTrustOptions().addCertPath(kubeConfig.getCaCertFile()));
     WebClient webClient = WebClient.create(vertx, webClientOptions);
 
-    return this.vertx.<OIDCInfo>executeBlocking(p -> {
+    return webClient.getAbs("https://kubernetes.default.svc/.well-known/openid-configuration").bearerTokenAuthentication(kubeConfig.getAutoOAuthToken()).send().compose(res -> {
+      ObjectMapper mapper = new ObjectMapper();
       try {
-        String out = kClient.raw("/.well-known/openid-configuration");
+        OIDCInfo oidcInfo = mapper.readValue(res.bodyAsString(), OIDCInfo.class);
 
-        ObjectMapper mapper = new ObjectMapper();
-        OIDCInfo oidcInfo = mapper.readValue(out, OIDCInfo.class);
-
-        p.complete(oidcInfo);
-      } catch (final Exception ex) {
-        p.fail(ex);
+        return Future.succeededFuture(oidcInfo);
+      } catch (JsonProcessingException e) {
+        return Future.failedFuture(e);
       }
     }).compose(oidcInfo -> {
       this.oidcInfo = oidcInfo;
 
-      return webClient.getAbs(oidcInfo.getJwks().toString()).bearerTokenAuthentication(c.getAutoOAuthToken()).send();
+      return webClient.getAbs(oidcInfo.getJwks().toString()).bearerTokenAuthentication(kubeConfig.getAutoOAuthToken()).send();
     }).compose(res -> {
       if (res.statusCode() >= 200 && res.statusCode() < 300) {
         try {
@@ -94,7 +92,7 @@ public class TokenVerifier {
         }
       }
 
-      return Future.failedFuture("unexpected response code: " + res.statusCode());
+      return Future.failedFuture("unexpected response code on JWKeys URL: " + res.statusCode());
     });
   }
 }
