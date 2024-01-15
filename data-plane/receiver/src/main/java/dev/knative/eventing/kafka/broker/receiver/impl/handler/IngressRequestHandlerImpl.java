@@ -22,6 +22,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE
 
 import dev.knative.eventing.kafka.broker.contract.DataPlaneContract;
 import dev.knative.eventing.kafka.broker.core.metrics.Metrics;
+import dev.knative.eventing.kafka.broker.core.oidc.TokenVerifier;
 import dev.knative.eventing.kafka.broker.core.tracing.TracingConfig;
 import dev.knative.eventing.kafka.broker.core.tracing.TracingSpan;
 import dev.knative.eventing.kafka.broker.receiver.IngressProducer;
@@ -77,12 +78,21 @@ public class IngressRequestHandlerImpl implements IngressRequestHandler {
     }
 
     @Override
-    public void handle(final RequestContext requestContext, final IngressProducer producer) {
+    public void handle(final RequestContext requestContext, final IngressProducer producer, final TokenVerifier tokenVerifier) {
 
         final Tags resourceTags = Metrics.resourceRefTags(producer.getReference());
+        tokenVerifier
+        .verify(requestContext.getRequest(), "some-audience")
+        .onFailure(cause -> {
+          requestContext
+            .getRequest()
+            .response()
+            .setStatusCode(401)
+            .end();
 
-        requestToRecordMapper
-                .requestToRecord(requestContext.getRequest(), producer.getTopic())
+          logger.warn("Failed to verify audience", cause);
+        }).compose(jwtClaims -> requestToRecordMapper
+                .requestToRecord(requestContext.getRequest(), producer.getTopic()))
                 .onFailure(cause -> {
                     // Conversion to record failed
                     requestContext

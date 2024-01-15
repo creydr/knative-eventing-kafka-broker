@@ -98,7 +98,7 @@ public class IngressRequestHandlerImplTest {
             public DataPlaneContract.Reference getReference() {
                 return DataPlaneContract.Reference.newBuilder().build();
             }
-        });
+        }, null);
 
         verifySetStatusCodeAndTerminateResponse(statusCode, response);
     }
@@ -129,7 +129,7 @@ public class IngressRequestHandlerImplTest {
             public DataPlaneContract.Reference getReference() {
                 return DataPlaneContract.Reference.newBuilder().build();
             }
-        });
+        }, null);
 
         verifySetStatusCodeAndTerminateResponse(IngressRequestHandlerImpl.MAPPER_FAILED, response);
     }

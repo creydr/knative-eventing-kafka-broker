@@ -22,6 +22,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import dev.knative.eventing.kafka.broker.core.file.FileWatcher;
+import dev.knative.eventing.kafka.broker.core.oidc.TokenVerifier;
 import dev.knative.eventing.kafka.broker.core.reconciler.IngressReconcilerListener;
 import dev.knative.eventing.kafka.broker.core.reconciler.ResourcesReconciler;
 import dev.knative.eventing.kafka.broker.receiver.IngressProducer;
@@ -42,6 +43,8 @@ import io.vertx.core.net.SSLOptions;
 import java.io.File;
 import java.io.IOException;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,6 +93,8 @@ public class ReceiverVerticle extends AbstractVerticle implements Handler<HttpSe
     private IngressProducerReconcilableStore ingressProducerStore;
 
     private FileWatcher secretWatcher;
+
+    private TokenVerifier tokenVerifier;
 
     public ReceiverVerticle(
             final ReceiverEnv env,
@@ -145,6 +150,13 @@ public class ReceiverVerticle extends AbstractVerticle implements Handler<HttpSe
 
         final var handler = new ProbeHandler(
                 env.getLivenessProbePath(), env.getReadinessProbePath(), new MethodNotAllowedHandler(this));
+
+        try {
+          this.tokenVerifier = new TokenVerifier(vertx);
+        } catch (ExecutionException | InterruptedException | TimeoutException e) {
+          logger.error("Failed to setup OIDC TokenVerifier", e);
+          throw new RuntimeException(e);
+        }
 
         if (this.httpsServer != null) {
             CompositeFuture.all(
@@ -224,8 +236,10 @@ public class ReceiverVerticle extends AbstractVerticle implements Handler<HttpSe
             return;
         }
 
+
+
         // Invoke the ingress request handler
-        this.ingressRequestHandler.handle(requestContext, producer);
+        this.ingressRequestHandler.handle(requestContext, producer, this.tokenVerifier);
     }
 
     public void updateServerConfig() {
