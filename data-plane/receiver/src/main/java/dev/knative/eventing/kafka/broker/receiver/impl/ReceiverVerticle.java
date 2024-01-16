@@ -22,6 +22,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import dev.knative.eventing.kafka.broker.core.file.FileWatcher;
+import dev.knative.eventing.kafka.broker.core.oidc.OIDCDiscoveryConfig;
 import dev.knative.eventing.kafka.broker.core.oidc.TokenVerifier;
 import dev.knative.eventing.kafka.broker.core.reconciler.IngressReconcilerListener;
 import dev.knative.eventing.kafka.broker.core.reconciler.ResourcesReconciler;
@@ -31,7 +32,6 @@ import dev.knative.eventing.kafka.broker.receiver.RequestContext;
 import dev.knative.eventing.kafka.broker.receiver.impl.handler.MethodNotAllowedHandler;
 import dev.knative.eventing.kafka.broker.receiver.impl.handler.ProbeHandler;
 import dev.knative.eventing.kafka.broker.receiver.main.ReceiverEnv;
-import io.fabric8.kubernetes.client.*;
 import io.vertx.core.*;
 import io.vertx.core.buffer.*;
 import io.vertx.core.eventbus.MessageConsumer;
@@ -43,8 +43,6 @@ import io.vertx.core.net.SSLOptions;
 import java.io.File;
 import java.io.IOException;
 import java.util.Objects;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -148,16 +146,16 @@ public class ReceiverVerticle extends AbstractVerticle implements Handler<HttpSe
             }
         }
 
+        Promise oidcPromise = Promise.promise();
+        OIDCDiscoveryConfig.build(vertx).onSuccess(oidcDiscoveryConfig -> {
+          this.tokenVerifier = new TokenVerifier(vertx, oidcDiscoveryConfig);
+          oidcPromise.complete();
+        }).onFailure(oidcPromise::fail);
+
         final var handler = new ProbeHandler(
                 env.getLivenessProbePath(), env.getReadinessProbePath(), new MethodNotAllowedHandler(this));
 
-        try {
-          this.tokenVerifier = new TokenVerifier(vertx);
-        } catch (ExecutionException | InterruptedException | TimeoutException e) {
-          logger.error("Failed to setup OIDC TokenVerifier", e);
-          throw new RuntimeException(e);
-        }
-
+        Promise serversPromise = Promise.promise();
         if (this.httpsServer != null) {
             CompositeFuture.all(
                             this.httpServer
@@ -169,15 +167,22 @@ public class ReceiverVerticle extends AbstractVerticle implements Handler<HttpSe
                                     .exceptionHandler(startPromise::tryFail)
                                     .listen(this.httpsServerOptions.getPort(), this.httpsServerOptions.getHost()))
                     .<Void>mapEmpty()
-                    .onComplete(startPromise);
+                    .onComplete(serversPromise);
         } else {
             this.httpServer
                     .requestHandler(handler)
                     .exceptionHandler(startPromise::tryFail)
                     .listen(this.httpServerOptions.getPort(), this.httpServerOptions.getHost())
                     .<Void>mapEmpty()
-                    .onComplete(startPromise);
+                    .onComplete(serversPromise);
         }
+
+
+        Future.all(
+          oidcPromise.future(),
+          serversPromise.future())
+          .<Void>mapEmpty()
+          .onComplete(startPromise);
 
         setupSecretWatcher();
     }
