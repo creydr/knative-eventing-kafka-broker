@@ -15,10 +15,12 @@
  */
 package dev.knative.eventing.kafka.broker.core.oidc;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.net.URL;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 class OIDCInfo {
 
   private String issuer;
