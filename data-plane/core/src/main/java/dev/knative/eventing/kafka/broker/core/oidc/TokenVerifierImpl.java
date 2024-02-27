@@ -40,6 +40,10 @@ public class TokenVerifierImpl implements TokenVerifier {
     }
 
     public Future<JwtClaims> verify(String token, String expectedAudience) {
+        if (this.oidcDiscoveryConfig == null) {
+            return Future.failedFuture("OIDC discovery config must be valid to verify a token");
+        }
+
         return this.vertx.<JwtClaims>executeBlocking(promise -> {
             // execute blocking, as jose .process() is blocking
 

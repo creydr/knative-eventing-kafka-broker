@@ -62,7 +62,7 @@ public class Main {
      * @param args command line arguments.
      */
     public static void start(final String[] args, final ReactiveProducerFactory kafkaProducerFactory)
-            throws IOException, ExecutionException, InterruptedException {
+            throws IOException, InterruptedException {
         ReceiverEnv env = new ReceiverEnv(System::getenv);
 
         OpenTelemetrySdk openTelemetry =
@@ -100,10 +100,17 @@ public class Main {
         httpsServerOptions.setTracingPolicy(TracingPolicy.PROPAGATE);
 
         // Setup OIDC discovery config
-        OIDCDiscoveryConfig oidcDiscoveryConfig = OIDCDiscoveryConfig.build(vertx)
-                .toCompletionStage()
-                .toCompletableFuture()
-                .get();
+        OIDCDiscoveryConfig oidcDiscoveryConfig = null;
+        try {
+            oidcDiscoveryConfig = OIDCDiscoveryConfig.build(vertx)
+                    .toCompletionStage()
+                    .toCompletableFuture()
+                    .get();
+        } catch (final ExecutionException ex) {
+            logger.error(
+                    "Could not get OIDC config. OIDC authentication will fail. You can ignore this message in case OIDC authentication is disabled. {}",
+                    keyValue("message", ex.getMessage()));
+        }
 
         // Configure the verticle to deploy and the deployment options
         final Supplier<Verticle> receiverVerticleFactory = new ReceiverVerticleFactory(
