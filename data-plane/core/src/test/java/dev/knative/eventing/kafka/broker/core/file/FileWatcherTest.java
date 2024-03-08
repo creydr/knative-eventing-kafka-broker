@@ -42,7 +42,7 @@ public class FileWatcherTest {
         Files.deleteIfExists(tempFile.toPath());
     }
 
-    @Test
+    @RepeatedTest(20)
     public void testFileModification() throws Exception {
         // Set up a counter to track how many times the trigger function is called
         AtomicInteger counter = new AtomicInteger(0);
@@ -77,7 +77,7 @@ public class FileWatcherTest {
         await().until(() -> counter.get() == 1);
     }
 
-    @Test
+    @RepeatedTest(20)
     public void testDifferentFileCreated() throws Exception {
       // Set up a counter to track how many times the trigger function is called
       AtomicInteger counter = new AtomicInteger(0);
