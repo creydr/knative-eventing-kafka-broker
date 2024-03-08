@@ -22,9 +22,7 @@ import static java.nio.file.StandardWatchEventKinds.OVERFLOW;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.FileSystems;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
+import java.nio.file.*;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import org.slf4j.Logger;
@@ -49,6 +47,8 @@ public class FileWatcher implements AutoCloseable {
 
     private Thread watcherThread;
     private WatchService watcher;
+
+    private long lastModificationDate;
 
     private final CountDownLatch waitRunning;
 
@@ -121,6 +121,7 @@ public class FileWatcher implements AutoCloseable {
 
         this.waitRunning.countDown();
 
+        logger.debug("Calling trigger function for initial run");
         triggerFunction.run();
 
         while (!Thread.interrupted()) {
@@ -129,11 +130,6 @@ public class FileWatcher implements AutoCloseable {
             try {
                 key = watcher.take();
                 logger.debug("Contract updates");
-
-                // It can happen that we receive two separate ENTRY_MODIFY events for the same file (file modified
-                // and timestamp updated). To prevent this, we sleep, to eliminate the double calls.
-                // see: https://stackoverflow.com/a/25221600
-                Thread.sleep(50);
             } catch (InterruptedException e) {
                 break; // Thread.interrupt was invoked
             }
@@ -148,9 +144,25 @@ public class FileWatcher implements AutoCloseable {
             for (final var event : key.pollEvents()) {
                 final var kind = event.kind();
 
+                logger.debug("Got " + kind.name() + " for file: " + event.context() + ", count: " + event.count());
+
+                File f = new File(this.toWatch.getParentFile(), ((Path) event.context()).toString());
+
+                if (f.lastModified() == this.lastModificationDate) {
+                  logger.debug("Modification date didn't change (" + f.lastModified() + " - " + this.lastModificationDate + ") . Skipping...");
+                  continue;
+                }
+
                 // We check if the event's context (the file) matches our target file
+                if (!event.context().toString().equals(this.toWatch.getName())) {
+                  logger.debug("Skipping event for " + event.context().toString() + " as we only watch " + this.toWatch.getName());
+                  continue;
+                }
+
                 if (kind != OVERFLOW) {
+                    logger.debug("Calling trigger func as we got a " + kind.name() + " on " + event.context().toString());
                     triggerFunction.run();
+                    this.lastModificationDate = f.lastModified();
                     break;
                 }
             }
