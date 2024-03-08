@@ -129,6 +129,11 @@ public class FileWatcher implements AutoCloseable {
             try {
                 key = watcher.take();
                 logger.debug("Contract updates");
+
+                // It can happen that we receive two separate ENTRY_MODIFY events for the same file (file modified
+                // and timestamp updated). To prevent this, we sleep, to eliminate the double calls.
+                // see: https://stackoverflow.com/a/25221600
+                Thread.sleep(50);
             } catch (InterruptedException e) {
                 break; // Thread.interrupt was invoked
             }
