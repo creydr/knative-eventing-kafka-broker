@@ -19,6 +19,7 @@ package sink
 import (
 	"context"
 	"fmt"
+	corev1 "k8s.io/api/core/v1"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -159,89 +160,6 @@ func (r *Reconciler) reconcileKind(ctx context.Context, ks *eventing.KafkaSink) 
 
 	logger.Debug("Got contract config map")
 
-	// Get contract data.
-	ct, err := r.GetDataPlaneConfigMapData(logger, contractConfigMap)
-	if err != nil && ct == nil {
-		return statusConditionManager.FailedToGetDataFromConfigMap(err)
-	}
-	if ct == nil {
-		ct = &contract.Contract{}
-	}
-
-	if err := r.setTrustBundles(ct); err != nil {
-		return statusConditionManager.FailedToResolveConfig(err)
-	}
-
-	logger.Debug(
-		"Got contract data from config map",
-		zap.Any("contract", ct),
-	)
-
-	// Get sink configuration.
-	sinkConfig := &contract.Resource{
-		Uid:    string(ks.UID),
-		Topics: []string{ks.Spec.Topic},
-		Ingress: &contract.Ingress{
-			Path:                       receiver.PathFromObject(ks),
-			ContentMode:                coreconfig.ContentModeFromString(*ks.Spec.ContentMode),
-			EnableAutoCreateEventTypes: feature.FromContext(ctx).IsEnabled(feature.EvenTypeAutoCreate),
-		},
-		BootstrapServers: kafka.BootstrapServersCommaSeparated(ks.Spec.BootstrapServers),
-		Reference: &contract.Reference{
-			Uuid:         string(ks.GetUID()),
-			Namespace:    ks.GetNamespace(),
-			Name:         ks.GetName(),
-			Kind:         "KafkaSink",
-			GroupVersion: eventingv1alpha1.SchemeGroupVersion.String(),
-		},
-	}
-	if ks.Spec.HasAuthConfig() {
-		sinkConfig.Auth = &contract.Resource_AuthSecret{
-			AuthSecret: &contract.Reference{
-				Uuid:      string(secret.UID),
-				Namespace: secret.Namespace,
-				Name:      secret.Name,
-				Version:   secret.ResourceVersion,
-			},
-		}
-	}
-
-	if ks.Status.Address != nil && ks.Status.Address.Audience != nil {
-		sinkConfig.Ingress.Audience = *ks.Status.Address.Audience
-	}
-
-	statusConditionManager.ConfigResolved()
-
-	sinkIndex := coreconfig.FindResource(ct, ks.UID)
-	// Update contract data with the new sink configuration.
-	coreconfig.AddOrUpdateResourceConfig(ct, sinkConfig, sinkIndex, logger)
-
-	// Update the configuration map with the new contract data.
-	if err := r.UpdateDataPlaneConfigMap(ctx, ct, contractConfigMap); err != nil {
-		logger.Error("failed to update data plane config map", zap.Error(
-			statusConditionManager.FailedToUpdateConfigMap(err),
-		))
-		return err
-	}
-	statusConditionManager.ConfigMapUpdated()
-
-	logger.Debug("Config map updated")
-
-	// We update receiver pods annotation regardless of our contract changed or not due to the fact  that in a previous
-	// reconciliation we might have failed to update one of our data plane pod annotation, so we want to anyway update
-	// remaining annotations with the contract generation that was saved in the CM.
-	// Note: if there aren't changes to be done at the pod annotation level, we just skip the update.
-
-	// Since we reject events to a non-existing Sink, which means that we cannot consider a Sink Ready if all
-	// receivers haven't got the Sink, so update failures to receiver pods is a hard failure.
-
-	// Update volume generation annotation of receiver pods
-	if err := r.UpdateReceiverPodsContractGenerationAnnotation(ctx, logger, ct.Generation); err != nil {
-		return err
-	}
-
-	logger.Debug("Updated receiver pod annotation")
-
 	transportEncryptionFlags := feature.FromContext(ctx)
 	var addressableStatus duckv1.AddressStatus
 	if transportEncryptionFlags.IsPermissiveTransportEncryption() {
@@ -299,6 +217,62 @@ func (r *Reconciler) reconcileKind(ctx context.Context, ks *eventing.KafkaSink) 
 	ks.Status.AddressStatus = addressableStatus
 
 	ks.GetConditionSet().Manage(ks.GetStatus()).MarkTrue(base.ConditionAddressable)
+
+	// update contract at end of reconcilation to have updated status fields
+	// from this reconcilation in contract updated too.
+
+	// Get contract data.
+	ct, err := r.GetDataPlaneConfigMapData(logger, contractConfigMap)
+	if err != nil && ct == nil {
+		return statusConditionManager.FailedToGetDataFromConfigMap(err)
+	}
+	if ct == nil {
+		ct = &contract.Contract{}
+	}
+
+	if err := r.setTrustBundles(ct); err != nil {
+		return statusConditionManager.FailedToResolveConfig(err)
+	}
+
+	logger.Debug(
+		"Got contract data from config map",
+		zap.Any("contract", ct),
+	)
+
+	// Get sink configuration.
+	sinkConfig := r.getSinkContractResource(ctx, ks, secret)
+
+	statusConditionManager.ConfigResolved()
+
+	sinkIndex := coreconfig.FindResource(ct, ks.UID)
+	// Update contract data with the new sink configuration.
+	coreconfig.AddOrUpdateResourceConfig(ct, sinkConfig, sinkIndex, logger)
+
+	// Update the configuration map with the new contract data.
+	if err := r.UpdateDataPlaneConfigMap(ctx, ct, contractConfigMap); err != nil {
+		logger.Error("failed to update data plane config map", zap.Error(
+			statusConditionManager.FailedToUpdateConfigMap(err),
+		))
+		return err
+	}
+	statusConditionManager.ConfigMapUpdated()
+
+	logger.Debug("Config map updated")
+
+	// We update receiver pods annotation regardless of our contract changed or not due to the fact  that in a previous
+	// reconciliation we might have failed to update one of our data plane pod annotation, so we want to anyway update
+	// remaining annotations with the contract generation that was saved in the CM.
+	// Note: if there aren't changes to be done at the pod annotation level, we just skip the update.
+
+	// Since we reject events to a non-existing Sink, which means that we cannot consider a Sink Ready if all
+	// receivers haven't got the Sink, so update failures to receiver pods is a hard failure.
+
+	// Update volume generation annotation of receiver pods
+	if err := r.UpdateReceiverPodsContractGenerationAnnotation(ctx, logger, ct.Generation); err != nil {
+		return err
+	}
+
+	logger.Debug("Updated receiver pod annotation")
 
 	return nil
 }
@@ -438,4 +412,40 @@ func (r *Reconciler) setTrustBundles(ct *contract.Contract) error {
 	}
 	ct.TrustBundles = tb
 	return nil
+}
+
+func (r *Reconciler) getSinkContractResource(ctx context.Context, kafkaSink *eventingv1alpha1.KafkaSink, secret *corev1.Secret) *contract.Resource {
+	sinkConfig := &contract.Resource{
+		Uid:    string(kafkaSink.UID),
+		Topics: []string{kafkaSink.Spec.Topic},
+		Ingress: &contract.Ingress{
+			Path:                       receiver.PathFromObject(kafkaSink),
+			ContentMode:                coreconfig.ContentModeFromString(*kafkaSink.Spec.ContentMode),
+			EnableAutoCreateEventTypes: feature.FromContext(ctx).IsEnabled(feature.EvenTypeAutoCreate),
+		},
+		BootstrapServers: kafka.BootstrapServersCommaSeparated(kafkaSink.Spec.BootstrapServers),
+		Reference: &contract.Reference{
+			Uuid:         string(kafkaSink.GetUID()),
+			Namespace:    kafkaSink.GetNamespace(),
+			Name:         kafkaSink.GetName(),
+			Kind:         "KafkaSink",
+			GroupVersion: eventingv1alpha1.SchemeGroupVersion.String(),
+		},
+	}
+	if kafkaSink.Spec.HasAuthConfig() {
+		sinkConfig.Auth = &contract.Resource_AuthSecret{
+			AuthSecret: &contract.Reference{
+				Uuid:      string(secret.UID),
+				Namespace: secret.Namespace,
+				Name:      secret.Name,
+				Version:   secret.ResourceVersion,
+			},
+		}
+	}
+
+	if kafkaSink.Status.Address != nil && kafkaSink.Status.Address.Audience != nil {
+		sinkConfig.Ingress.Audience = *kafkaSink.Status.Address.Audience
+	}
+
+	return sinkConfig
 }
