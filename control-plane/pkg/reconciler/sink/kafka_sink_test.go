@@ -1064,6 +1064,24 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 			WantEvents: []string{
 				finalizerUpdatedEvent,
 			},
+			WantUpdates: []clientgotesting.UpdateActionImpl{
+				ConfigMapUpdate(env.DataPlaneConfigMapNamespace, env.ContractConfigMapName, env.ContractConfigMapFormat, &contract.Contract{
+					Resources: []*contract.Resource{
+						{
+							Uid:              SinkUUID,
+							Topics:           []string{SinkTopic()},
+							Ingress:          &contract.Ingress{ContentMode: contract.ContentMode_BINARY, Path: receiver.Path(SinkNamespace, SinkName)},
+							BootstrapServers: bootstrapServers,
+							Reference:        SinkReference(),
+						},
+					},
+					Generation: 1,
+				}),
+				SinkReceiverPodUpdate(env.SystemNamespace, map[string]string{
+					base.VolumeGenerationAnnotationKey: "1",
+					"annotation_to_preserve":           "value_to_preserve",
+				}),
+			},
 			WantPatches: []clientgotesting.PatchActionImpl{
 				patchFinalizers(),
 			},
@@ -1073,7 +1091,9 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusControllerOwnsTopic(sink.ControllerTopicOwner),
 						InitSinkConditions,
 						StatusDataPlaneAvailable,
+						StatusConfigParsed,
 						BootstrapServers(bootstrapServersArr),
+						StatusConfigMapUpdatedReady(&env),
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						StatusProbeFailed(prober.StatusNotReady),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
@@ -1099,6 +1119,24 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 			WantEvents: []string{
 				finalizerUpdatedEvent,
 			},
+			WantUpdates: []clientgotesting.UpdateActionImpl{
+				ConfigMapUpdate(env.DataPlaneConfigMapNamespace, env.ContractConfigMapName, env.ContractConfigMapFormat, &contract.Contract{
+					Resources: []*contract.Resource{
+						{
+							Uid:              SinkUUID,
+							Topics:           []string{SinkTopic()},
+							Ingress:          &contract.Ingress{ContentMode: contract.ContentMode_BINARY, Path: receiver.Path(SinkNamespace, SinkName)},
+							BootstrapServers: bootstrapServers,
+							Reference:        SinkReference(),
+						},
+					},
+					Generation: 1,
+				}),
+				SinkReceiverPodUpdate(env.SystemNamespace, map[string]string{
+					base.VolumeGenerationAnnotationKey: "1",
+					"annotation_to_preserve":           "value_to_preserve",
+				}),
+			},
 			WantPatches: []clientgotesting.PatchActionImpl{
 				patchFinalizers(),
 			},
@@ -1108,7 +1146,9 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusControllerOwnsTopic(sink.ControllerTopicOwner),
 						InitSinkConditions,
 						StatusDataPlaneAvailable,
+						StatusConfigParsed,
 						BootstrapServers(bootstrapServersArr),
+						StatusConfigMapUpdatedReady(&env),
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						StatusProbeFailed(prober.StatusUnknown),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
