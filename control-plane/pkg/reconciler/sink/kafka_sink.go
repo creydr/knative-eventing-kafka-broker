@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	corev1 "k8s.io/api/core/v1"
+	eventingv1alpha1listers "knative.dev/eventing/pkg/client/listers/eventing/v1alpha1"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -64,7 +65,8 @@ type Reconciler struct {
 
 	Resolver *resolver.URIResolver
 
-	ConfigMapLister corelisters.ConfigMapLister
+	ConfigMapLister   corelisters.ConfigMapLister
+	EventPolicyLister eventingv1alpha1listers.EventPolicyLister
 
 	// GetKafkaClusterAdmin creates new sarama ClusterAdmin. It's convenient to add this as Reconciler field so that we can
 	// mock the function used during the reconciliation loop.
@@ -240,7 +242,10 @@ func (r *Reconciler) reconcileKind(ctx context.Context, ks *eventing.KafkaSink) 
 	)
 
 	// Get sink configuration.
-	sinkConfig := r.getSinkContractResource(ctx, ks, secret)
+	sinkConfig, err := r.getSinkContractResource(ctx, ks, secret)
+	if err != nil {
+		return statusConditionManager.FailedToResolveConfig(err)
+	}
 
 	statusConditionManager.ConfigResolved()
 
@@ -414,7 +419,7 @@ func (r *Reconciler) setTrustBundles(ct *contract.Contract) error {
 	return nil
 }
 
-func (r *Reconciler) getSinkContractResource(ctx context.Context, kafkaSink *eventingv1alpha1.KafkaSink, secret *corev1.Secret) *contract.Resource {
+func (r *Reconciler) getSinkContractResource(ctx context.Context, kafkaSink *eventingv1alpha1.KafkaSink, secret *corev1.Secret) (*contract.Resource, error) {
 	sinkConfig := &contract.Resource{
 		Uid:    string(kafkaSink.UID),
 		Topics: []string{kafkaSink.Spec.Topic},
@@ -447,5 +452,11 @@ func (r *Reconciler) getSinkContractResource(ctx context.Context, kafkaSink *eve
 		sinkConfig.Ingress.Audience = *kafkaSink.Status.Address.Audience
 	}
 
-	return sinkConfig
+	eventPolicies, err := coreconfig.EventPoliciesFromAppliedEventPoliciesStatus(kafkaSink.Status.AppliedEventPoliciesStatus, r.EventPolicyLister, kafkaSink.Namespace)
+	if err != nil {
+		return nil, fmt.Errorf("could not get eventpolicies from channel status: %w", err)
+	}
+	sinkConfig.Ingress.EventPolicies = eventPolicies
+
+	return sinkConfig, nil
 }
