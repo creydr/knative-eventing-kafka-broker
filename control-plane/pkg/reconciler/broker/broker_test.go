@@ -2326,7 +2326,7 @@ func brokerReconciliation(t *testing.T, format string, env config.Env) {
 				feature.AuthorizationDefaultMode: feature.AuthorizationAllowSameNamespace,
 			}),
 		}, {
-			Name: "Should list applying EventPolicies",
+			Name: "Should list applying EventPolicies and contain in contract",
 			Objects: []runtime.Object{
 				NewBroker(),
 				BrokerConfig(bootstrapServers, 20, 5),
@@ -2343,6 +2343,7 @@ func brokerReconciliation(t *testing.T, format string, env config.Env) {
 				reconcilertesting.NewEventPolicy(readyEventPolicyName, BrokerNamespace,
 					reconcilertesting.WithReadyEventPolicyCondition,
 					reconcilertesting.WithEventPolicyToRef(brokerV1GVK, BrokerName),
+					reconcilertesting.WithEventPolicyStatusFromSub([]string{"sub1"}),
 				),
 			},
 			Key: testKey,
@@ -2358,6 +2359,13 @@ func brokerReconciliation(t *testing.T, format string, env config.Env) {
 							Ingress: &contract.Ingress{
 								Path:     receiver.Path(BrokerNamespace, BrokerName),
 								Audience: brokerAudience,
+								EventPolicies: []*contract.EventPolicy{
+									{
+										Subjects: []string{
+											"sub1",
+										},
+									},
+								},
 							},
 							BootstrapServers: bootstrapServers,
 							Reference:        BrokerReference(),
@@ -2442,8 +2450,9 @@ func brokerReconciliation(t *testing.T, format string, env config.Env) {
 							Uid:    BrokerUUID,
 							Topics: []string{BrokerTopic()},
 							Ingress: &contract.Ingress{
-								Path:     receiver.Path(BrokerNamespace, BrokerName),
-								Audience: brokerAudience,
+								Path:          receiver.Path(BrokerNamespace, BrokerName),
+								Audience:      brokerAudience,
+								EventPolicies: nil,
 							},
 							BootstrapServers: bootstrapServers,
 							Reference:        BrokerReference(),
