@@ -165,75 +165,6 @@ func (r *Reconciler) reconcileKind(ctx context.Context, broker *eventing.Broker)
 		return err
 	}
 
-	// Get contract data.
-	ct, err := r.GetDataPlaneConfigMapData(logger, contractConfigMap)
-	if err != nil && ct == nil {
-		return statusConditionManager.FailedToGetDataFromConfigMap(err)
-	}
-
-	logger.Debug("Got contract data from config map", zap.Any(base.ContractLogKey, ct))
-
-	if err := r.setTrustBundles(ct); err != nil {
-		return statusConditionManager.FailedToResolveConfig(err)
-	}
-
-	// Get resource configuration.
-	brokerResource, err := r.reconcilerBrokerResource(ctx, topic, broker, secret, topicConfig)
-	if err != nil {
-		return statusConditionManager.FailedToResolveConfig(err)
-	}
-	coreconfig.SetDeadLetterSinkURIFromEgressConfig(&broker.Status.DeliveryStatus, brokerResource.EgressConfig)
-
-	brokerIndex := coreconfig.FindResource(ct, broker.UID)
-	// Update contract data with the new contract configuration
-	coreconfig.SetResourceEgressesFromContract(ct, brokerResource, brokerIndex)
-	coreconfig.AddOrUpdateResourceConfig(ct, brokerResource, brokerIndex, logger)
-
-	// Update the configuration map with the new contract data.
-	if err := r.UpdateDataPlaneConfigMap(ctx, ct, contractConfigMap); err != nil {
-		logger.Error("failed to update data plane config map", zap.Error(
-			statusConditionManager.FailedToUpdateConfigMap(err),
-		))
-		return err
-	}
-	logger.Debug("Contract config map updated")
-	statusConditionManager.ConfigMapUpdated()
-
-	// We update receiver and dispatcher pods annotation regardless of our contract changed or not due to the fact
-	// that in a previous reconciliation we might have failed to update one of our data plane pod annotation, so we want
-	// to anyway update remaining annotations with the contract generation that was saved in the CM.
-
-	// We reject events to a non-existing Broker, which means that we cannot consider a Broker Ready if all
-	// receivers haven't got the Broker, so update failures to receiver pods is a hard failure.
-	// On the other side, dispatcher pods care about Triggers, and the Broker object is used as a configuration
-	// prototype for all associated Triggers, so we consider that it's fine on the dispatcher side to receive eventually
-	// the update even if here eventually means seconds or minutes after the actual update.
-
-	// Update volume generation annotation of receiver pods
-	if err := r.UpdateReceiverPodsContractGenerationAnnotation(ctx, logger, ct.Generation); err != nil {
-		logger.Error("Failed to update receiver pod annotation", zap.Error(
-			statusConditionManager.FailedToUpdateReceiverPodsAnnotation(err),
-		))
-		return err
-	}
-
-	logger.Debug("Updated receiver pod annotation")
-
-	// Update volume generation annotation of dispatcher pods
-	if err := r.UpdateDispatcherPodsContractGenerationAnnotation(ctx, logger, ct.Generation); err != nil {
-		// Failing to update dispatcher pods annotation leads to config map refresh delayed by several seconds.
-		// Since the dispatcher side is the consumer side, we don't lose availability, and we can consider the Broker
-		// ready. So, log out the error and move on to the next step.
-		logger.Warn(
-			"Failed to update dispatcher pod annotation to trigger an immediate config map refresh",
-			zap.Error(err),
-		)
-
-		statusConditionManager.FailedToUpdateDispatcherPodsAnnotation(err)
-	} else {
-		logger.Debug("Updated dispatcher pod annotation")
-	}
-
 	ingressHost := network.GetServiceHostname(r.Env.IngressName, r.DataPlaneNamespace)
 
 	transportEncryptionFlags := feature.FromContext(ctx)
@@ -303,6 +234,78 @@ func (r *Reconciler) reconcileKind(ctx context.Context, broker *eventing.Broker)
 	err = auth.UpdateStatusWithEventPolicies(feature.FromContext(ctx), &broker.Status.AppliedEventPoliciesStatus, &broker.Status, r.EventPolicyLister, eventing.SchemeGroupVersion.WithKind("Broker"), broker.ObjectMeta)
 	if err != nil {
 		return fmt.Errorf("could not update broker status with EventPolicies: %v", err)
+	}
+
+	// update contract at end of reconcilation to have updated status fields
+	// from this reconcilation in contract updated too.
+
+	// Get contract data.
+	ct, err := r.GetDataPlaneConfigMapData(logger, contractConfigMap)
+	if err != nil && ct == nil {
+		return statusConditionManager.FailedToGetDataFromConfigMap(err)
+	}
+
+	logger.Debug("Got contract data from config map", zap.Any(base.ContractLogKey, ct))
+
+	if err := r.setTrustBundles(ct); err != nil {
+		return statusConditionManager.FailedToResolveConfig(err)
+	}
+
+	// Get resource configuration.
+	brokerResource, err := r.reconcilerBrokerResource(ctx, topic, broker, secret, topicConfig)
+	if err != nil {
+		return statusConditionManager.FailedToResolveConfig(err)
+	}
+	coreconfig.SetDeadLetterSinkURIFromEgressConfig(&broker.Status.DeliveryStatus, brokerResource.EgressConfig)
+
+	brokerIndex := coreconfig.FindResource(ct, broker.UID)
+	// Update contract data with the new contract configuration
+	coreconfig.SetResourceEgressesFromContract(ct, brokerResource, brokerIndex)
+	coreconfig.AddOrUpdateResourceConfig(ct, brokerResource, brokerIndex, logger)
+
+	// Update the configuration map with the new contract data.
+	if err := r.UpdateDataPlaneConfigMap(ctx, ct, contractConfigMap); err != nil {
+		logger.Error("failed to update data plane config map", zap.Error(
+			statusConditionManager.FailedToUpdateConfigMap(err),
+		))
+		return err
+	}
+	logger.Debug("Contract config map updated")
+	statusConditionManager.ConfigMapUpdated()
+
+	// We update receiver and dispatcher pods annotation regardless of our contract changed or not due to the fact
+	// that in a previous reconciliation we might have failed to update one of our data plane pod annotation, so we want
+	// to anyway update remaining annotations with the contract generation that was saved in the CM.
+
+	// We reject events to a non-existing Broker, which means that we cannot consider a Broker Ready if all
+	// receivers haven't got the Broker, so update failures to receiver pods is a hard failure.
+	// On the other side, dispatcher pods care about Triggers, and the Broker object is used as a configuration
+	// prototype for all associated Triggers, so we consider that it's fine on the dispatcher side to receive eventually
+	// the update even if here eventually means seconds or minutes after the actual update.
+
+	// Update volume generation annotation of receiver pods
+	if err := r.UpdateReceiverPodsContractGenerationAnnotation(ctx, logger, ct.Generation); err != nil {
+		logger.Error("Failed to update receiver pod annotation", zap.Error(
+			statusConditionManager.FailedToUpdateReceiverPodsAnnotation(err),
+		))
+		return err
+	}
+
+	logger.Debug("Updated receiver pod annotation")
+
+	// Update volume generation annotation of dispatcher pods
+	if err := r.UpdateDispatcherPodsContractGenerationAnnotation(ctx, logger, ct.Generation); err != nil {
+		// Failing to update dispatcher pods annotation leads to config map refresh delayed by several seconds.
+		// Since the dispatcher side is the consumer side, we don't lose availability, and we can consider the Broker
+		// ready. So, log out the error and move on to the next step.
+		logger.Warn(
+			"Failed to update dispatcher pod annotation to trigger an immediate config map refresh",
+			zap.Error(err),
+		)
+
+		statusConditionManager.FailedToUpdateDispatcherPodsAnnotation(err)
+	} else {
+		logger.Debug("Updated dispatcher pod annotation")
 	}
 
 	return nil
