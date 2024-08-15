@@ -2064,6 +2064,7 @@ func TestReconcileKind(t *testing.T) {
 			ServiceLister:       listers.GetServiceLister(),
 			SubscriptionLister:  listers.GetSubscriptionLister(),
 			ConsumerGroupLister: listers.GetConsumerGroupLister(),
+			EventPolicyLister:   listers.GetEventPolicyLister(),
 			InternalsClient:     fakeconsumergroupinformer.Get(ctx),
 			Prober:              proberMock,
 			IngressHost:         network.GetServiceHostname(env.IngressName, env.SystemNamespace),
