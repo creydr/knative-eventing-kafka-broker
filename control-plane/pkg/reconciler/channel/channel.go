@@ -207,25 +207,6 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, channel *messagingv1beta
 	}
 	logger.Debug("Got contract config map")
 
-	// Get data plane config data.
-	ct, err := r.GetDataPlaneConfigMapData(logger, contractConfigMap)
-	if err != nil || ct == nil {
-		return statusConditionManager.FailedToGetDataFromConfigMap(err)
-	}
-	logger.Debug("Got contract data from config map", zap.Any(base.ContractLogKey, ct))
-
-	_, err = r.setTrustBundles(ct)
-	if err != nil {
-		return statusConditionManager.FailedToResolveConfig(err)
-	}
-
-	// Get resource configuration
-	channelResource, err := r.getChannelContractResource(ctx, topic, channel, authContext, topicConfig)
-	if err != nil {
-		return statusConditionManager.FailedToResolveConfig(err)
-	}
-	coreconfig.SetDeadLetterSinkURIFromEgressConfig(&channel.Status.DeliveryStatus, channelResource.EgressConfig)
-
 	allReady, subscribersError := r.reconcileSubscribers(ctx, channel, topicName, topicConfig.BootstrapServers, secret)
 	if subscribersError != nil {
 		channel.GetConditionSet().Manage(&channel.Status).MarkFalse(KafkaChannelConditionSubscribersReady, "failed to reconcile all subscribers", subscribersError.Error())
@@ -236,38 +217,6 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, channel *messagingv1beta
 	} else {
 		channel.GetConditionSet().Manage(&channel.Status).MarkTrue(KafkaChannelConditionSubscribersReady)
 	}
-
-	// Update contract data with the new contract configuration (add/update channel resource)
-	channelIndex := coreconfig.FindResource(ct, channel.UID)
-	coreconfig.AddOrUpdateResourceConfig(ct, channelResource, channelIndex, logger)
-	// Update the configuration map with the new contract data.
-	if err := r.UpdateDataPlaneConfigMap(ctx, ct, contractConfigMap); err != nil {
-		logger.Error("failed to update data plane config map", zap.Error(
-			statusConditionManager.FailedToUpdateConfigMap(err),
-		))
-		return err
-	}
-	logger.Debug("Contract config map updated")
-	statusConditionManager.ConfigMapUpdated()
-
-	// We update receiver pods annotation regardless of our contract changed or not due to the fact
-	// that in a previous reconciliation we might have failed to update one of our data plane pod annotation, so we want
-	// to anyway update remaining annotations with the contract generation that was saved in the CM.
-
-	// We reject events to a non-existing Channel, which means that we cannot consider a Channel Ready if all
-	// receivers haven't got the Channel, so update failures to receiver pods is a hard failure.
-	// On the other side, dispatcher pods care about Subscriptions, and the Channel object is used as a configuration
-	// prototype for all associated Subscriptions, so we consider that it's fine on the dispatcher side to receive eventually
-	// the update even if here eventually means seconds or minutes after the actual update.
-
-	// Update volume generation annotation of receiver pods
-	if err := r.UpdateReceiverPodsContractGenerationAnnotation(ctx, logger, ct.Generation); err != nil {
-		logger.Error("Failed to update receiver pod annotation", zap.Error(
-			statusConditionManager.FailedToUpdateReceiverPodsAnnotation(err),
-		))
-		return err
-	}
-	logger.Debug("Updated receiver pod annotation")
 
 	channelService, err := r.reconcileChannelService(ctx, channel)
 	if err != nil {
@@ -341,6 +290,60 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, channel *messagingv1beta
 	channel.Status.Address = addressableStatus.Address
 	channel.Status.Addresses = addressableStatus.Addresses
 	channel.GetConditionSet().Manage(channel.GetStatus()).MarkTrue(base.ConditionAddressable)
+
+	// update contract at end of reconcilation to have updated status fields
+	// from this reconcilation in contract updated too.
+
+	// Get data plane config data.
+	ct, err := r.GetDataPlaneConfigMapData(logger, contractConfigMap)
+	if err != nil || ct == nil {
+		return statusConditionManager.FailedToGetDataFromConfigMap(err)
+	}
+	logger.Debug("Got contract data from config map", zap.Any(base.ContractLogKey, ct))
+
+	_, err = r.setTrustBundles(ct)
+	if err != nil {
+		return statusConditionManager.FailedToResolveConfig(err)
+	}
+
+	// Get resource configuration
+	channelResource, err := r.getChannelContractResource(ctx, topic, channel, authContext, topicConfig)
+	if err != nil {
+		return statusConditionManager.FailedToResolveConfig(err)
+	}
+	coreconfig.SetDeadLetterSinkURIFromEgressConfig(&channel.Status.DeliveryStatus, channelResource.EgressConfig)
+
+	// Update contract data with the new contract configuration (add/update channel resource)
+	channelIndex := coreconfig.FindResource(ct, channel.UID)
+	coreconfig.AddOrUpdateResourceConfig(ct, channelResource, channelIndex, logger)
+	// Update the configuration map with the new contract data.
+	if err := r.UpdateDataPlaneConfigMap(ctx, ct, contractConfigMap); err != nil {
+		logger.Error("failed to update data plane config map", zap.Error(
+			statusConditionManager.FailedToUpdateConfigMap(err),
+		))
+		return err
+	}
+	logger.Debug("Contract config map updated")
+	statusConditionManager.ConfigMapUpdated()
+
+	// We update receiver pods annotation regardless of our contract changed or not due to the fact
+	// that in a previous reconciliation we might have failed to update one of our data plane pod annotation, so we want
+	// to anyway update remaining annotations with the contract generation that was saved in the CM.
+
+	// We reject events to a non-existing Channel, which means that we cannot consider a Channel Ready if all
+	// receivers haven't got the Channel, so update failures to receiver pods is a hard failure.
+	// On the other side, dispatcher pods care about Subscriptions, and the Channel object is used as a configuration
+	// prototype for all associated Subscriptions, so we consider that it's fine on the dispatcher side to receive eventually
+	// the update even if here eventually means seconds or minutes after the actual update.
+
+	// Update volume generation annotation of receiver pods
+	if err := r.UpdateReceiverPodsContractGenerationAnnotation(ctx, logger, ct.Generation); err != nil {
+		logger.Error("Failed to update receiver pod annotation", zap.Error(
+			statusConditionManager.FailedToUpdateReceiverPodsAnnotation(err),
+		))
+		return err
+	}
+	logger.Debug("Updated receiver pod annotation")
 
 	return nil
 }

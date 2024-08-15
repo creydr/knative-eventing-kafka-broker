@@ -331,24 +331,7 @@ func TestReconcileKind(t *testing.T) {
 					kafka.BootstrapServersConfigMapKey: ChannelBootstrapServers,
 				}),
 			},
-			Key: testKey,
-			WantUpdates: []clientgotesting.UpdateActionImpl{
-				ConfigMapUpdate(env.DataPlaneConfigMapNamespace, env.ContractConfigMapName, env.ContractConfigMapFormat, &contract.Contract{
-					Generation: 1,
-					Resources: []*contract.Resource{
-						{
-							Uid:              ChannelUUID,
-							Topics:           []string{ChannelTopic()},
-							BootstrapServers: ChannelBootstrapServers,
-							Reference:        ChannelReference(),
-							Ingress: &contract.Ingress{
-								Host: receiver.Host(ChannelNamespace, ChannelName),
-								Path: receiver.Path(ChannelNamespace, ChannelName),
-							},
-						},
-					},
-				}),
-			},
+			Key:                     testKey,
 			SkipNamespaceValidation: true, // WantCreates compare the channel namespace with configmap namespace, so skip it
 			WantCreates: []runtime.Object{
 				NewConfigMapWithBinaryData(env.DataPlaneConfigMapNamespace, env.ContractConfigMapName, nil),
@@ -359,7 +342,6 @@ func TestReconcileKind(t *testing.T) {
 					Object: NewChannel(
 						WithInitKafkaChannelConditions,
 						StatusConfigParsed,
-						StatusConfigMapUpdatedReady(&env),
 						WithChannelTopicStatusAnnotation(ChannelTopic()),
 						StatusTopicReadyWithName(ChannelTopic()),
 						StatusProbeFailed(prober.StatusNotReady),
@@ -385,24 +367,7 @@ func TestReconcileKind(t *testing.T) {
 					kafka.BootstrapServersConfigMapKey: ChannelBootstrapServers,
 				}),
 			},
-			Key: testKey,
-			WantUpdates: []clientgotesting.UpdateActionImpl{
-				ConfigMapUpdate(env.DataPlaneConfigMapNamespace, env.ContractConfigMapName, env.ContractConfigMapFormat, &contract.Contract{
-					Generation: 1,
-					Resources: []*contract.Resource{
-						{
-							Uid:              ChannelUUID,
-							Topics:           []string{ChannelTopic()},
-							BootstrapServers: ChannelBootstrapServers,
-							Reference:        ChannelReference(),
-							Ingress: &contract.Ingress{
-								Host: receiver.Host(ChannelNamespace, ChannelName),
-								Path: receiver.Path(ChannelNamespace, ChannelName),
-							},
-						},
-					},
-				}),
-			},
+			Key:                     testKey,
 			SkipNamespaceValidation: true, // WantCreates compare the channel namespace with configmap namespace, so skip it
 			WantCreates: []runtime.Object{
 				NewConfigMapWithBinaryData(env.DataPlaneConfigMapNamespace, env.ContractConfigMapName, nil),
@@ -413,7 +378,6 @@ func TestReconcileKind(t *testing.T) {
 					Object: NewChannel(
 						WithInitKafkaChannelConditions,
 						StatusConfigParsed,
-						StatusConfigMapUpdatedReady(&env),
 						WithChannelTopicStatusAnnotation(ChannelTopic()),
 						StatusTopicReadyWithName(ChannelTopic()),
 						StatusProbeFailed(prober.StatusUnknown),
@@ -1641,6 +1605,7 @@ func TestReconcileKind(t *testing.T) {
 					kafka.BootstrapServersConfigMapKey: ChannelBootstrapServers,
 				}),
 				NewConfigMapWithBinaryData(env.DataPlaneConfigMapNamespace, env.ContractConfigMapName, []byte("corrupt")),
+				NewPerChannelService(&env),
 			},
 			Key:                     testKey,
 			WantErr:                 true,
@@ -1652,6 +1617,19 @@ func TestReconcileKind(t *testing.T) {
 						StatusConfigParsed,
 						WithChannelTopicStatusAnnotation(ChannelTopic()),
 						StatusTopicReadyWithName(ChannelTopic()),
+						WithChannelAddessable(),
+						WithChannelAddresses([]duckv1.Addressable{
+							{
+								Name: pointer.String("http"),
+								URL:  ChannelAddress(),
+							},
+						}),
+						WithChannelAddress(duckv1.Addressable{
+							Name: pointer.String("http"),
+							URL:  ChannelAddress(),
+						}),
+						StatusProbeSucceeded,
+						StatusChannelSubscribers(),
 						StatusConfigMapNotUpdatedReady(
 							"Failed to get contract data from ConfigMap: knative-eventing/kafka-channel-channels-subscriptions",
 							"failed to unmarshal contract: 'corrupt'",
@@ -1964,8 +1942,9 @@ func TestReconcileKind(t *testing.T) {
 							BootstrapServers: ChannelBootstrapServers,
 							Reference:        ChannelReference(),
 							Ingress: &contract.Ingress{
-								Host: receiver.Host(ChannelNamespace, ChannelName),
-								Path: receiver.Path(ChannelNamespace, ChannelName),
+								Host:     receiver.Host(ChannelNamespace, ChannelName),
+								Path:     receiver.Path(ChannelNamespace, ChannelName),
+								Audience: ChannelAudience,
 							},
 						},
 					},
