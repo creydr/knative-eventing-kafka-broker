@@ -175,17 +175,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
@@ -241,17 +230,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
@@ -317,17 +295,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
@@ -395,17 +362,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ExternalTopicOwner),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
@@ -521,17 +477,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusConfigMapUpdatedReady(&env),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
@@ -635,17 +580,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
@@ -697,17 +631,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
@@ -782,17 +705,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
@@ -866,17 +778,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
@@ -961,17 +862,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
@@ -1033,17 +923,6 @@ func sinkReconciliation(t *testing.T, format string, env config.Env) {
 						StatusTopicReadyWithOwner(SinkTopic(), sink.ControllerTopicOwner),
 						SinkAddressable(&env),
 						StatusProbeSucceeded,
-						WithSinkAddress(duckv1.Addressable{
-							Name: pointer.String("http"),
-							URL:  sinkAddress,
-						}),
-						WithSinkAddresses([]duckv1.Addressable{
-							{
-								Name: pointer.String("http"),
-								URL:  sinkAddress,
-							},
-						}),
-						WithSinkAddessable(),
 						WithSinkEventPolicyConditionAuthZNotSupported(),
 					),
 				},
