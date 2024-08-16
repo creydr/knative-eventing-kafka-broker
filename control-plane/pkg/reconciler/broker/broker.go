@@ -192,19 +192,6 @@ func (r *Reconciler) reconcileKind(ctx context.Context, broker *eventing.Broker)
 		addressableStatus.Address = &httpAddress
 		addressableStatus.Addresses = []duckv1.Addressable{httpAddress}
 	}
-	proberAddressable := prober.ProberAddressable{
-		AddressStatus: &addressableStatus,
-		ResourceKey: types.NamespacedName{
-			Namespace: broker.GetNamespace(),
-			Name:      broker.GetName(),
-		},
-	}
-
-	if status := r.Prober.Probe(ctx, proberAddressable, prober.StatusReady); status != prober.StatusReady {
-		statusConditionManager.ProbesStatusNotReady(status)
-		return nil // Object will get re-queued once probe status changes.
-	}
-	statusConditionManager.ProbesStatusReady()
 
 	broker.Status.Address = addressableStatus.Address
 	broker.Status.Addresses = addressableStatus.Addresses
@@ -306,6 +293,21 @@ func (r *Reconciler) reconcileKind(ctx context.Context, broker *eventing.Broker)
 	} else {
 		logger.Debug("Updated dispatcher pod annotation")
 	}
+
+	// probe, when contract got updated and dataplane is aware of changes
+	proberAddressable := prober.ProberAddressable{
+		AddressStatus: &addressableStatus,
+		ResourceKey: types.NamespacedName{
+			Namespace: broker.GetNamespace(),
+			Name:      broker.GetName(),
+		},
+	}
+
+	if status := r.Prober.Probe(ctx, proberAddressable, prober.StatusReady); status != prober.StatusReady {
+		statusConditionManager.ProbesStatusNotReady(status)
+		return nil // Object will get re-queued once probe status changes.
+	}
+	statusConditionManager.ProbesStatusReady()
 
 	return nil
 }
