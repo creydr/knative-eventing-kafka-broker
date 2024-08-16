@@ -273,22 +273,6 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, channel *messagingv1beta
 		addressableStatus.Addresses = []duckv1.Addressable{httpAddress}
 	}
 
-	proberAddressable := prober.ProberAddressable{
-		AddressStatus: &addressableStatus,
-		ResourceKey: types.NamespacedName{
-			Namespace: channel.GetNamespace(),
-			Name:      channel.GetName(),
-		},
-	}
-
-	logger.Debug("Going to probe address to check ingress readiness for the channel.", zap.Any("proberAddressable", proberAddressable))
-	if status := r.Prober.Probe(ctx, proberAddressable, prober.StatusReady); status != prober.StatusReady {
-		logger.Debug("Ingress is not ready for the channel. Going to requeue.", zap.Any("proberAddressable", proberAddressable))
-		statusConditionManager.ProbesStatusNotReady(status)
-		return nil // Object will get re-queued once probe status changes.
-	}
-
-	statusConditionManager.ProbesStatusReady()
 	channel.Status.Address = addressableStatus.Address
 	channel.Status.Addresses = addressableStatus.Addresses
 	channel.GetConditionSet().Manage(channel.GetStatus()).MarkTrue(base.ConditionAddressable)
@@ -346,6 +330,24 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, channel *messagingv1beta
 		return err
 	}
 	logger.Debug("Updated receiver pod annotation")
+
+	// probe, after contract got updated and dataplane is aware of changes
+	proberAddressable := prober.ProberAddressable{
+		AddressStatus: &addressableStatus,
+		ResourceKey: types.NamespacedName{
+			Namespace: channel.GetNamespace(),
+			Name:      channel.GetName(),
+		},
+	}
+
+	logger.Debug("Going to probe address to check ingress readiness for the channel.", zap.Any("proberAddressable", proberAddressable))
+	if status := r.Prober.Probe(ctx, proberAddressable, prober.StatusReady); status != prober.StatusReady {
+		logger.Debug("Ingress is not ready for the channel. Going to requeue.", zap.Any("proberAddressable", proberAddressable))
+		statusConditionManager.ProbesStatusNotReady(status)
+		return nil // Object will get re-queued once probe status changes.
+	}
+
+	statusConditionManager.ProbesStatusReady()
 
 	return nil
 }
