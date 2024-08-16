@@ -201,21 +201,6 @@ func (r *Reconciler) reconcileKind(ctx context.Context, ks *eventing.KafkaSink) 
 		addressableStatus.Addresses = []duckv1.Addressable{httpAddress}
 	}
 
-	proberAddressable := prober.ProberAddressable{
-		AddressStatus: &addressableStatus,
-		ResourceKey: types.NamespacedName{
-			Namespace: ks.GetNamespace(),
-			Name:      ks.GetName(),
-		},
-	}
-
-	if status := r.Prober.Probe(ctx, proberAddressable, prober.StatusReady); status != prober.StatusReady {
-		statusConditionManager.ProbesStatusNotReady(status)
-		return nil // Object will get re-queued once probe status changes.
-	}
-
-	statusConditionManager.ProbesStatusReady()
-
 	ks.Status.AddressStatus = addressableStatus
 
 	ks.GetConditionSet().Manage(ks.GetStatus()).MarkTrue(base.ConditionAddressable)
@@ -278,6 +263,22 @@ func (r *Reconciler) reconcileKind(ctx context.Context, ks *eventing.KafkaSink) 
 	}
 
 	logger.Debug("Updated receiver pod annotation")
+
+	// probe, after contract got updated and dataplane is aware of changes
+	proberAddressable := prober.ProberAddressable{
+		AddressStatus: &addressableStatus,
+		ResourceKey: types.NamespacedName{
+			Namespace: ks.GetNamespace(),
+			Name:      ks.GetName(),
+		},
+	}
+
+	if status := r.Prober.Probe(ctx, proberAddressable, prober.StatusReady); status != prober.StatusReady {
+		statusConditionManager.ProbesStatusNotReady(status)
+		return nil // Object will get re-queued once probe status changes.
+	}
+
+	statusConditionManager.ProbesStatusReady()
 
 	return nil
 }
